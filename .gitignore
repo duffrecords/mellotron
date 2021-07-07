@@ -1,0 +1,11 @@
+/target
+*.o
+*.so
+*.dylib
+*.dll
+.DS_Store
+Cargo.lock
+*.wav
+mellotron-test.carxp
+.vscode
+*.code-workspace
