@@ -1,3 +1,4 @@
+use dirs::home_dir;
 use iterpipes::*;
 use lv2::prelude::*;
 use regex::Regex;
@@ -17,11 +18,15 @@ fn load_samples(instrument: std::string::String) -> Vec<Note> {
     // read sample data from all the files in a bank
     let mut samples: Vec<Note> = Vec::with_capacity(35);
     let re = Regex::new(r"/[A-G]b?").unwrap();
+    let home = match home_dir() {
+        Some(h) => h,
+        _ => std::path::PathBuf::from("."),
+    };
     for n in START_NOTE..END_NOTE + 1 {
         let midi_note = unsafe { wmidi::Note::from_u8_unchecked(n as u8) };
         let note_name = re.replace(midi_note.to_str(), "");
         let filename = format!("{}.wav", note_name);
-        let mut inp_file = File::open(Path::new("samples").join(instrument.clone()).join(filename)).unwrap();
+        let mut inp_file = File::open(home.as_path().join(".lv2/mellotron.lv2/samples").join(instrument.clone()).join(filename)).unwrap();
         let (header, data) = wav::read(&mut inp_file).unwrap();
         let values = match header.bits_per_sample {
             32 => data.as_thirty_two_float().unwrap().to_owned().into_iter().map(|d| f32::from(d)).collect(),
