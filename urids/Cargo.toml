@@ -1,0 +1,9 @@
+[package]
+name = "urids"
+version = "0.0.1"
+authors = ["Ian Young <ian@duffrecords.com"]
+edition = "2018"
+
+[dependencies.lv2]
+version = "0.6.0"
+features = ["lv2-buf-size", "lv2-options", "lv2-parameters", "lv2-ui"]

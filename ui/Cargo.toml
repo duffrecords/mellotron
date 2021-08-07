@@ -1,0 +1,27 @@
+
+[package]
+name = "mellotron-ui"
+version = "0.1.0"
+authors = ["Ian Young <ian@duffrecords.com>"]
+license = "MIT"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cascade = "1.0.0"
+
+lv2 = "0.6.0"
+lv2-sys = "2.0.0"
+
+cairo-rs = "0.9.1"
+pango = "0.9.1"
+pangocairo = "0.10.0"
+
+pugl-ui = "0.3.0"
+pugl-sys = "0.4.2"
+
+jilar = { git = "https://github.com/johannes-mueller/jilar.git" }
+
+urids = { path = "../urids" }

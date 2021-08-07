@@ -2,12 +2,19 @@ use dirs::home_dir;
 use iterpipes::*;
 use lv2::prelude::*;
 use regex::Regex;
+use urids::{PluginConfig, PluginState};
 use std::fs::File;
 use std::path::Path;
+use std::time::SystemTime;
 
 const START_NOTE: usize = 57; // A2
 const END_NOTE: usize = 89;   // F5
 const NORMALIZE_OFFSET: f32 = 0.1;
+
+#[derive(FeatureCollection)]
+pub struct Features<'a> {
+    map: LV2Map<'a>,
+}
 
 fn _root_mean_square(vec: Vec<f32>) -> f32 {
     let sum_squares = vec.iter().fold(0.0, |acc, &x| acc + x.powi(2));
@@ -81,21 +88,33 @@ impl Note {
 pub struct Voice {
     name: std::string::String,
     notes: Vec<Note>,
+    patch: urids::Patch,
     // max_sum: f32,
     // max_avg: f32,
     // max_rms: f32,
 }
 
 impl Voice {
-    pub fn new(instrument: std::string::String) -> Self
+    pub fn new(mut patch: urids::Patch) -> Self
     {
         Self {
-            name: instrument.clone(),
-            notes: load_samples(instrument.to_lowercase().replace(" ", "_")),
+            name: patch.to_string(),
+            notes: load_samples(patch.to_string().to_lowercase().replace(" ", "_").replace("(", "").replace(")", "")),
+            patch: patch,
             // max_sum: 0.0,
             // max_avg: 0.0,
             // max_rms: 0.0,
         }
+    }
+    pub fn prev_patch(&mut self) {
+        self.patch.prev();
+        self.name = self.patch.to_string();
+        self.notes = load_samples(self.patch.to_string().to_lowercase().replace(" ", "_"));
+    }
+    pub fn next_patch(&mut self) {
+        self.patch.next();
+        self.name = self.patch.to_string();
+        self.notes = load_samples(self.patch.to_string().to_lowercase().replace(" ", "_"));
     }
 }
 
@@ -161,8 +180,16 @@ impl Pipe for Voice
             // }
             // (sum / total) * 0.1
             // rms * NORMALIZE_OFFSET
+            // let ts = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+            // if ts.as_millis() % 250 == 0 {
+            //     println!("{}.{}\t{}", ts.as_secs(), ts.as_millis() % 1000, sum * 0.7071 * NORMALIZE_OFFSET);
+            // }
             sum * 0.7071 * NORMALIZE_OFFSET
         } else {
+            // let ts = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+            // if ts.as_millis() % 1000 == 0 {
+            //     println!("{}.{}\t{}", ts.as_secs(), ts.as_millis() % 1000, 0);
+            // }
             0.0
         }
     }
@@ -251,13 +278,26 @@ fn test_atomizer() {
 pub struct EventReader<'a> {
     atom_urids: &'a AtomURIDCollection,
     midi_urids: &'a MidiURIDCollection,
+    urids: &'a urids::URIDs,
+    notify: &'a mut OutputPort<AtomPort>,
+    ui_active: bool,
+    ui_notified: bool,
 }
 
 impl<'a> EventReader<'a> {
-    pub fn new(atom_urids: &'a AtomURIDCollection, midi_urids: &'a MidiURIDCollection) -> Self {
+    pub fn new(
+        atom_urids: &'a AtomURIDCollection,
+        midi_urids: &'a MidiURIDCollection,
+        urids: &'a urids::URIDs,
+        notify: &'a mut OutputPort<AtomPort>
+    ) -> Self {
         Self {
             atom_urids,
             midi_urids,
+            urids,
+            notify,
+            ui_active: true,
+            ui_notified: false,
         }
     }
 }
@@ -268,9 +308,9 @@ impl<'a> Pipe for EventReader<'a> {
 
     fn next(&mut self, atom: Option<UnidentifiedAtom>) -> (Option<NoteUpdate>, Option<NoteUpdate>) {
         if let Some(atom) = atom {
-            if let Some(message) = atom
-                .read(self.midi_urids.wmidi, ())
+            if let Some(message) = atom.read(self.midi_urids.wmidi, ())
             {
+                // println!("{:?}", message);
                 match message {
                     wmidi::MidiMessage::NoteOn(_channel, note, velocity) => {
                         println!("NoteOn: {:?}", note);
@@ -280,8 +320,55 @@ impl<'a> Pipe for EventReader<'a> {
                         println!("NoteOff: {:?}", note);
                         (Some(NoteUpdate {note: note, onoff: false, velocity: velocity}), Some(NoteUpdate {note: note, onoff: false, velocity: velocity}))
                     }
+                    wmidi::MidiMessage::ControlChange(_channel, control, value) => {
+                        println!("ControlChange: {:?} {:?}", control, value);
+                        if self.ui_active {
+                            let mut sequence_writer = self.notify.init(
+                                self.atom_urids.sequence,
+                                TimeStampURID::Frames(self.urids.unit.frame)
+                            ).unwrap();
+
+                            if !self.ui_notified {
+                                let mut object_writer = sequence_writer.init(
+                                    TimeStamp::Frames(0),
+                                    self.atom_urids.object,
+                                    ObjectHeader {
+                                        id: None,
+                                        otype: self.urids.plugin_config.into_general(),
+                                    }
+                                ).unwrap();
+
+                                // let sample_rate = plugin_info.sample_rate() as f32;
+                                // object_writer.init(self.urids.parameters.sample_rate,
+                                //                    self.atom_urids.float,
+                                //                    sample_rate as f32);
+                            }
+                            self.ui_notified = true;
+
+                            let mut object_writer = sequence_writer.init(
+                                TimeStamp::Frames(0),
+                                self.atom_urids.object,
+                                ObjectHeader {
+                                    id: None,
+                                    otype: self.urids.plugin_state.into_general(),
+                                }
+                            ).unwrap();
+                            let mut mix_value: Option<usize> = None;
+                            println!("writing mix value to notify");
+                            if let Some(value) = mix_value {
+                                object_writer.init(self.urids.mix_value, self.urids.atom.int, value as i32);
+                            }
+                        }
+                        (None, None)
+                    }
                     m => {println!("{:?}", m); (None, None)},
                 }
+            } else if let Some((header, reader)) = atom.read(self.atom_urids.object, ()) {
+                println!("received control message");
+                match header.otype {
+                    m => {println!("otype: {:?}", m)}
+                };
+                (None, None)
             } else {
                 println!("could not read atom");
                 (None, None)

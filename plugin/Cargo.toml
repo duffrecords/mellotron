@@ -1,0 +1,22 @@
+[package]
+name = "mellotron"
+version = "0.1.0"
+authors = ["Ian Young <ian@duffrecords.com>"]
+license = "MIT"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# dasp_frame = "0.11.0"
+# dasp_ring_buffer = "0.11.0"
+# dasp_rms = "0.11.0"
+dirs = "3.0.2"
+iterpipes = "0.2.0"
+lv2 = { version = "0.6.0", features = ["lv2-atom", "lv2-options", "lv2-time", "lv2-worker", "wmidi"] }
+lv2-worker = "0.1"
+regex = "1.5.4"
+wav = "1.0.0"
+wmidi = "3.1.0"
+urids = { path = "../urids" }
